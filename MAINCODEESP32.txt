@@ -1,0 +1,85 @@
+#include <LiquidCrystal_I2C.h>
+#include "EmonLib.h"
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
+
+// Initialize the LCD display
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Create an instance of EnergyMonitor
+EnergyMonitor emon1;
+
+// Voltage of the outlets
+const double voltage = 120.0;
+
+void setup() {
+  // Initialize the LCD
+  lcd.init();
+  lcd.clear();
+  lcd.backlight();
+
+  // Start serial communication
+  Serial.begin(115200);
+
+  // Setup current sensor
+  emon1.current(34, 111.1);  // Current: input pin, calibration
+
+  // Initialize SD card
+  if (!SD.begin()) {
+    Serial.println("Card Mount Failed");
+    return;
+  }
+  uint8_t cardType = SD.cardType();
+  if (cardType == CARD_NONE) {
+    Serial.println("No SD card attached");
+    return;
+  }
+  Serial.println("SD Card initialized.");
+}
+
+void loop() {
+  // Calculate Irms only
+  double Irms = emon1.calcIrms(1480);
+
+  // Calculate power in watts
+  double power = Irms * voltage;
+
+  // Convert power to kilowatts
+  double power_kW = power / 1000;
+
+  // Print current and power to serial monitor
+  Serial.print("Current: ");
+  Serial.print(Irms, 3);
+  Serial.print(" A, Power: ");
+  Serial.print(power_kW, 3);
+  Serial.println(" kW");
+
+  // Display current and power on LCD
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("I:");
+  lcd.print(Irms, 3);
+  lcd.print(" A");
+  lcd.setCursor(0, 1);
+  lcd.print("P:");
+  lcd.print(power_kW, 3);
+  lcd.print(" kW");
+
+  // Save data to SD card
+  File dataFile = SD.open("/power_data.txt", FILE_APPEND);
+  if (dataFile) {
+    dataFile.print("Current: ");
+    dataFile.print(Irms, 3);
+    dataFile.print(" A, Power: ");
+    dataFile.print(power_kW, 3);
+    dataFile.println(" kW");
+    dataFile.close();
+    Serial.println("Data saved to SD card.");
+  } else {
+    Serial.println("Error opening file for writing.");
+  }
+
+  // Delay for 1 second before the next reading
+  delay(1000);
+}
